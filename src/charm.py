@@ -1378,6 +1378,7 @@ class LxdCharm(CharmBase):
         # For OVN to be usable, we need the PKI files to connect to it
         if not self._stored.ovn_certificates_present:
             self.unit_blocked("'certificates' missing")
+            event.defer()
             return
 
         # Get the list of ovn-central hosts' IPs
@@ -1694,6 +1695,15 @@ class LxdCharm(CharmBase):
         """Apply a YAML preseed to LXD."""
         logger.debug("Applying LXD preseed")
 
+        if "local" in self.model.storages and len(self.model.storages["local"]) == 1:
+            preseed = yaml.safe_load(preseed_yaml) or {}
+            for pool in preseed.get("storage_pools", []):
+                if pool["name"] == "local" and pool["driver"] == "zfs":
+                    pool.setdefault("config", {}).setdefault(
+                        "source", str(self.model.storages["local"][0].location)
+                    )
+            preseed_yaml = yaml.safe_dump(preseed).encode()
+
         try:
             subprocess.run(
                 ["lxd", "init", "--preseed"],
@@ -1720,6 +1730,17 @@ class LxdCharm(CharmBase):
     def lxd_cluster_join(self, token: str, member_config: List[Dict]) -> None:
         """Join an existing cluster."""
         logger.debug("Joining cluster")
+
+        preseed = yaml.safe_load(str(self.config.get("lxd-preseed") or "")) or {}
+        network_parents = {
+            network["name"]: network["config"]["parent"]
+            for network in preseed.get("networks", [])
+            if "parent" in network.get("config", {})
+        }
+        for member in member_config:
+            if member.get("entity") == "network" and member.get("key") == "parent":
+                if member.get("name") in network_parents:
+                    member["value"] = network_parents[member["name"]]
 
         # If a local storage device was provided, it needs to be added in the storage-pool
         if "local" in self.model.storages and len(self.model.storages["local"]) == 1:

@@ -193,7 +193,10 @@ config:
 
     lxd-preseed:
       type: string
-      description: Pass a YAML configuration to `lxd init` on initial start
+      description: |
+        Pass a YAML configuration to `lxd init` on initial start.
+        A local ZFS pool without an explicit source uses the Juju-attached
+        local storage device, if one is provided.
 
     mode:
       type: string
